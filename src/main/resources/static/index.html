@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Application de Chat WebSocket</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1.5.0/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+</head>
+<body>
+    <div>
+        <h2>Application de Chat</h2>
+        <div id="chatMessages"></div>
+        <input type="text" id="messageInput" placeholder="Tapez un message..." />
+        <button onclick="sendMessage()">Envoyer</button>
+    </div>
+
+    <script>
+        let stompClient = null;
+        let username = prompt("Entrez votre nom d'utilisateur :");
+
+        function connect() {
+            // Connexion au serveur via SockJS et STOMP
+            const socket = new SockJS('/ws');
+            stompClient = Stomp.over(socket);
+
+            stompClient.connect({}, function (frame) {
+                console.log('Connecté : ' + frame);
+
+                // S'abonne aux messages sur "/topic/public"
+                stompClient.subscribe('/topic/public', function (chatEvent) {
+                    showMessage(JSON.parse(chatEvent.body));
+                });
+
+                // Envoie un message pour signaler que l'utilisateur a rejoint le chat
+                stompClient.send("/app/chat.addUser", {}, JSON.stringify({
+                    'content': username,
+                    'sender': username,
+                    'type': 'JOIN'
+                }));
+            });
+        }
+
+        function sendMessage() {
+            const messageInput = document.getElementById("messageInput").value;
+            // Envoie un message au serveur via "/app/chat.sendMessage"
+            stompClient.send("/app/chat.sendMessage", {}, JSON.stringify({
+                'content': messageInput,
+                'sender': username,
+                'type': 'CHAT'
+            }));
+            document.getElementById("messageInput").value = ""; // Réinitialise le champ de saisie
+        }
+
+        function showMessage(message) {
+            const chatMessages = document.getElementById("chatMessages");
+            const messageElement = document.createElement("p");
+            messageElement.appendChild(document.createTextNode(message.sender + ": " + message.content));
+            chatMessages.appendChild(messageElement);
+        }
+
+        // Gère la déconnexion de l'utilisateur
+        window.addEventListener('beforeunload', function() {
+            stompClient.send("/app/chat.leaveUser", {}, JSON.stringify({
+                'sender': username,
+                'type': 'LEAVE'
+            }));
+        });
+
+        // Connecte au WebSocket à l'ouverture de la page
+        window.onload = connect;
+    </script>
+</body>
+</html>
